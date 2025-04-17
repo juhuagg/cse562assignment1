@@ -1,6 +1,8 @@
 import UIKit
 import CoreMotion
 
+import DGCharts
+
 // Quaternion struct for orientation representation remains unchanged
 struct Quaternion {
     var w: Double
@@ -148,6 +150,91 @@ class ViewController: UIViewController {
     // Algorithm label to display current method
     @IBOutlet weak var algorithmLabel: UILabel!
     
+    //Add Linechart
+    @IBOutlet weak var chartView: LineChartView!
+    // Chart view and data properties
+    private var pitchDataEntries: [ChartDataEntry] = []
+    private var rollDataEntries: [ChartDataEntry] = []
+    private let maxDataPoints = 100 // Maximum points to display
+    
+    //function to setup the chartView
+    func setupChartView() {
+        // Configure chart appearance
+        chartView.rightAxis.enabled = false
+        chartView.xAxis.labelPosition = .bottom
+        chartView.xAxis.drawLabelsEnabled = false
+        
+        // Set axis limits for degrees (-90° to 90°)
+        chartView.leftAxis.axisMinimum = -90
+        chartView.leftAxis.axisMaximum = 90
+        chartView.leftAxis.labelCount = 7
+        
+        // Create initial empty datasets
+        let pitchSet = LineChartDataSet(entries: pitchDataEntries, label: "Pitch")
+        pitchSet.setColor(.systemBlue)
+        pitchSet.drawCirclesEnabled = false
+        pitchSet.lineWidth = 2
+        pitchSet.drawValuesEnabled = false
+        pitchSet.mode = .cubicBezier
+        
+        let rollSet = LineChartDataSet(entries: rollDataEntries, label: "Roll")
+        rollSet.setColor(.systemRed)
+        rollSet.drawCirclesEnabled = false
+        rollSet.lineWidth = 2
+        rollSet.drawValuesEnabled = false
+        rollSet.mode = .cubicBezier
+        
+        // Add datasets to chart
+        let data = LineChartData(dataSets: [pitchSet, rollSet])
+        chartView.data = data
+        
+        // Disable interactions for real-time data
+        chartView.pinchZoomEnabled = false
+        chartView.doubleTapToZoomEnabled = false
+    }
+    
+    //function to update the chartView
+    func updateChart(pitch: Double, roll: Double) {
+        // Convert to degrees for better visualization
+        let pitchDegrees = pitch * 180.0 / .pi
+        let rollDegrees = roll * 180.0 / .pi
+        
+        // Get current x value (time index)
+        let xValue = Double(pitchDataEntries.count)
+        
+        // Add new data points
+        pitchDataEntries.append(ChartDataEntry(x: xValue, y: pitchDegrees))
+        rollDataEntries.append(ChartDataEntry(x: xValue, y: rollDegrees))
+        
+        // Maintain fixed window of data points
+        if pitchDataEntries.count > maxDataPoints {
+            pitchDataEntries.removeFirst()
+            rollDataEntries.removeFirst()
+            
+            // Shift x values left
+            for i in 0..<pitchDataEntries.count {
+                pitchDataEntries[i].x = Double(i)
+                rollDataEntries[i].x = Double(i)
+            }
+        }
+        
+        // Update chart data
+        if let chartData = chartView.data {
+            // Update existing datasets
+            if let pitchSet = chartData.dataSets[0] as? LineChartDataSet,
+               let rollSet = chartData.dataSets[1] as? LineChartDataSet {
+                pitchSet.replaceEntries(pitchDataEntries)
+                rollSet.replaceEntries(rollDataEntries)
+                
+                chartData.notifyDataChanged()
+                chartView.notifyDataSetChanged()
+                
+                // Auto-scroll to show latest data
+                chartView.moveViewToX(Double(pitchDataEntries.count - 1))
+            }
+        }
+    }
+    
     func startAccelAndGyro(){
         if (self.motion.isAccelerometerAvailable && self.motion.isGyroAvailable){
             self.motion.startAccelerometerUpdates()
@@ -177,6 +264,8 @@ class ViewController: UIViewController {
         
         // Start the sensor update loop (for display only)
         Timer.scheduledTimer(timeInterval: updateInterval, target: self, selector: #selector(updateSensorDisplay), userInfo: nil, repeats: true)
+        
+        setupChartView()
     }
     
     // Setup algorithm selection buttons
@@ -521,6 +610,9 @@ class ViewController: UIViewController {
         // Display calculated tilt (pitch and roll in degrees)
         pitch_text.text = String(format: "Pitch: %2.1f°", pitch * 180.0 / .pi)
         roll_text.text = String(format: "Roll: %2.1f°", roll * 180.0 / .pi)
+        
+        // Update the chartView
+        updateChart(pitch: pitch, roll: roll)
     }
     
     // Old runloop function replaced by updateSensorDisplay and collectDataPoint
